@@ -144,6 +144,7 @@ class CuDNNConvolutionLayer : public ConvolutionLayer<Dtype> {
   virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
       const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
 
+  bool handles_setup_;
   cudnnHandle_t* handle_;
   cudaStream_t*  stream_;
   vector<cudnnTensorDescriptor_t> bottom_descs_, top_descs_;
@@ -151,6 +152,8 @@ class CuDNNConvolutionLayer : public ConvolutionLayer<Dtype> {
   cudnnFilterDescriptor_t      filter_desc_;
   vector<cudnnConvolutionDescriptor_t> conv_descs_;
   int bottom_offset_, top_offset_, weight_offset_, bias_offset_;
+  size_t workspaceSizeInBytes;
+  void *workspace;
 };
 #endif
 
@@ -435,6 +438,7 @@ class CuDNNPoolingLayer : public PoolingLayer<Dtype> {
   virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
       const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
 
+  bool handles_setup_;
   cudnnHandle_t             handle_;
   cudnnTensorDescriptor_t bottom_desc_, top_desc_;
   cudnnPoolingDescriptor_t  pooling_desc_;

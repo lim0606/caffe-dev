@@ -19,55 +19,118 @@ void CuDNNConvolutionLayer<Dtype>::Forward_gpu(
     Dtype* top_data = top[i]->mutable_gpu_data();
     const Dtype* weight = this->blobs_[0]->gpu_data();
 
-    // Forward through cuDNN in parallel over groups.
-    for (int g = 0; g < this->group_; g++) {
-      Dtype alpha = 1.0;
-      Dtype beta = 0.0;
+    size_t workspace_limit_bytes = this->kernel_h_ *
+                                   this->kernel_w_ *
+                                   this->channels_ *
+                                   sizeof(int) + 1;
 
+    // Forward through cuDNN in parallel over groups.
+    //printf("asdfasdf1\n"); 
+    for (int g = 0; g < this->group_; g++) {
       cudnnConvolutionFwdAlgo_t algo;
 
-      // get the desired convolution algorithm
+      // pick the convolution algorithm
+      // TODO(shelhamer) this should be done during reshape
+      // TODO(shelhamer) the choice of automatic or manual algorithm picking
+      // should be exposed in proto
       CUDNN_CHECK(cudnnGetConvolutionForwardAlgorithm(handle_[g],
         bottom_descs_[i],
         filter_desc_,
         conv_descs_[i],
         top_descs_[i],
-        CUDNN_CONVOLUTION_FWD_NO_WORKSPACE,
-        0,  // memoryLimitInBytes,
+        CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT,
+        workspace_limit_bytes,  // memoryLimitInBytes,
         &algo));
 
       // get minimum size of the workspace needed for the desired algorithm
-      size_t workspaceSizeInBytes;
+      size_t workspaceSizeInBytes_temp = 0;
+      //printf("workspace_limit_bytes: %d\n", (int)workspace_limit_bytes);
+      int n, c, h, w, nStride, cStride, hStride, wStride;
+      cudnnDataType_t dataType;
+      
+      cudnnGetTensor4dDescriptor( bottom_descs_[i],
+                            &dataType,
+                            &n,
+                            &c,
+                            &h,
+                            &w,
+                            &nStride,
+                            &cStride,
+                            &hStride,
+                            &wStride );
+      //printf("bottom: %d, %d, %d, %d, %d, %d, %d, %d, %d\n", n, c, h, w, nStride, cStride, hStride, wStride, (int)dataType);
+      
+      cudnnGetTensor4dDescriptor( top_descs_[i],
+                            &dataType,
+                            &n,
+                            &c,
+                            &h,
+                            &w,
+                            &nStride,
+                            &cStride,
+                            &hStride,
+                            &wStride );
+      //printf("top: %d, %d, %d, %d, %d, %d, %d, %d, %d\n", n, c, h, w, nStride, cStride, hStride, wStride, (int)dataType); 
 
+      int pad_h, pad_w, u, v, upscale_x, upscale_y; 
+      cudnnConvolutionMode_t mode; 
+      cudnnGetConvolution2dDescriptor( conv_descs_[i],
+                                 &pad_h,
+                                 &pad_w,
+                                 &u,
+                                 &v,
+                                 &upscale_x,
+                                 &upscale_y,
+                                 &mode );
+      //printf("filter: %d, %d, %d, %d, %d, %d, %d\n", pad_h, pad_w, u, v, upscale_x, upscale_y, (int)mode);
+
+      int k;//, c, h, w;
+      cudnnGetFilter4dDescriptor(filter_desc_,
+                                 &dataType, &k, &c, &h, &w);
+      //printf("filter: %d, %d, %d, %d, %d\n", k, c, h, w, (int)dataType);
+ 
+      //LOG(INFO) << bottom_descs_[i]; 
       CUDNN_CHECK(cudnnGetConvolutionForwardWorkspaceSize(handle_[g],
         bottom_descs_[i],
         filter_desc_,
         conv_descs_[i],
         top_descs_[i],
         algo,
-        &workspaceSizeInBytes));
-
-      void *workspace = NULL;
-
+        &workspaceSizeInBytes_temp));
+      
+      //workspaceSizeInBytes_temp = workspace_limit_bytes * 2;  
+      //printf("workspaceSizeInBytes_tmp: %d\n", (int)workspaceSizeInBytes_temp);
+ 
+      if (workspaceSizeInBytes_temp > workspaceSizeInBytes) {
+        workspaceSizeInBytes = workspaceSizeInBytes_temp;
+        // free the existing workspace and allocate a new (larger) one
+        cudaFree(this->workspace);
+        cudaError_t err = cudaMalloc(&(this->workspace), workspaceSizeInBytes);
+        if (err != cudaSuccess) {
+          // force zero memory path
+          algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
+          workspace = NULL;
+          workspaceSizeInBytes = 0;
+        }
+      }
+      //printf("asdfasdf2\n"); 
       // Filters.
       CUDNN_CHECK(cudnnConvolutionForward(handle_[g],
-          reinterpret_cast<void *>(&alpha),
-          bottom_descs_[i], bottom_data + bottom_offset_ * g,
-          filter_desc_, weight + weight_offset_ * g,
-          conv_descs_[i],
-          algo, workspace, workspaceSizeInBytes,
-          reinterpret_cast<void *>(&beta),
-          top_descs_[i], top_data + top_offset_ * g));
+            cudnn::dataType<Dtype>::one,
+            bottom_descs_[i], bottom_data + bottom_offset_ * g,
+            filter_desc_, weight + weight_offset_ * g,
+            conv_descs_[i],
+            algo, workspace, workspaceSizeInBytes,
+            cudnn::dataType<Dtype>::zero,
+            top_descs_[i], top_data + top_offset_ * g));
 
       // Bias.
       if (this->bias_term_) {
         const Dtype* bias_data = this->blobs_[1]->gpu_data();
-        Dtype alpha = 1.0;
-        Dtype beta = 1.0;
         CUDNN_CHECK(cudnnAddTensor(handle_[g], CUDNN_ADD_SAME_C,
-              reinterpret_cast<void *>(&alpha),
+              cudnn::dataType<Dtype>::one,
               bias_desc_, bias_data + bias_offset_ * g,
-              reinterpret_cast<void *>(&beta),
+              cudnn::dataType<Dtype>::one,
               top_descs_[i], top_data + top_offset_ * g));
       }
     }
@@ -100,41 +163,37 @@ void CuDNNConvolutionLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     for (int g = 0; g < this->group_; g++) {
       // Gradient w.r.t. bias.
       if (this->bias_term_ && this->param_propagate_down_[1]) {
-        Dtype alpha = 1.0;
-        Dtype beta = 1.0;
         CUDNN_CHECK(cudnnConvolutionBackwardBias(handle_[0*this->group_ + g],
-            reinterpret_cast<void *>(&alpha),
-            top_descs_[i],  top_diff + top_offset_ * g,
-            reinterpret_cast<void *>(&beta),
-            bias_desc_, bias_diff + bias_offset_ * g));
+              cudnn::dataType<Dtype>::one,
+              top_descs_[i],  top_diff + top_offset_ * g,
+              cudnn::dataType<Dtype>::one,
+              bias_desc_, bias_diff + bias_offset_ * g));
       }
 
       // Gradient w.r.t. weights.
       if (this->param_propagate_down_[0]) {
-        Dtype alpha = 1.0;
-        Dtype beta = 1.0;
         const Dtype* bottom_data = bottom[i]->gpu_data();
         CUDNN_CHECK(cudnnConvolutionBackwardFilter(handle_[1*this->group_ + g],
-              reinterpret_cast<void *>(&alpha),
+              cudnn::dataType<Dtype>::one,
               bottom_descs_[i], bottom_data + bottom_offset_ * g,
               top_descs_[i],    top_diff + top_offset_ * g,
-              conv_descs_[i], reinterpret_cast<void *>(&beta),
+              conv_descs_[i],
+              cudnn::dataType<Dtype>::one,
               filter_desc_, weight_diff + weight_offset_ * g));
       }
 
       // Gradient w.r.t. bottom data.
       if (propagate_down[i]) {
-        Dtype alpha = 1.0;
-        Dtype beta = 0.0;
         if (weight == NULL) {
           weight = this->blobs_[0]->gpu_data();
         }
         Dtype* bottom_diff = bottom[i]->mutable_gpu_diff();
         CUDNN_CHECK(cudnnConvolutionBackwardData(handle_[2*this->group_ + g],
-              reinterpret_cast<void *>(&alpha),
+              cudnn::dataType<Dtype>::one,
               filter_desc_, weight + weight_offset_ * g,
-              top_descs_[i],    top_diff + top_offset_ * g,
-              conv_descs_[i], reinterpret_cast<void *>(&beta),
+              top_descs_[i], top_diff + top_offset_ * g,
+              conv_descs_[i],
+              cudnn::dataType<Dtype>::zero,
               bottom_descs_[i], bottom_diff + bottom_offset_ * g));
       }
     }

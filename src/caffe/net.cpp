@@ -504,9 +504,17 @@ Dtype Net<Dtype>::ForwardFromTo(int start, int end) {
   CHECK_LT(end, layers_.size());
   Dtype loss = 0;
   for (int i = start; i <= end; ++i) {
-    // LOG(ERROR) << "Forwarding " << layer_names_[i];
+    //printf("%d, start\n", i);
+    //LOG(ERROR) << "Forwarding " << layer_names_[i];
+    //if (i > 10) {
+    //LOG(ERROR) << "bottom_vecs: " << bottom_vecs_[i][0]->num() << ", " << bottom_vecs_[i][0]->channels() << ", " << bottom_vecs_[i][0]->width() <<", " << bottom_vecs_[i][0]->height();
+    //} 
+    //printf("%d, end\n", i);
+    
     layers_[i]->Reshape(bottom_vecs_[i], top_vecs_[i]);
+    //printf("asdf\n"); 
     Dtype layer_loss = layers_[i]->Forward(bottom_vecs_[i], top_vecs_[i]);
+    //printf("qwer\n"); 
     loss += layer_loss;
     if (debug_info_) { ForwardDebugInfo(i); }
   }

@@ -24,6 +24,8 @@ void CuDNNConvolutionLayer<Dtype>::LayerSetUp(
   // Initialize CUDA streams and cuDNN.
   stream_         = new cudaStream_t[this->group_ * CUDNN_STREAMS_PER_GROUP];
   handle_         = new cudnnHandle_t[this->group_ * CUDNN_STREAMS_PER_GROUP];
+  workspaceSizeInBytes = 0;
+  workspace = NULL;
 
   for (int g = 0; g < this->group_ * CUDNN_STREAMS_PER_GROUP; g++) {
     CUDA_CHECK(cudaStreamCreate(&stream_[g]));
@@ -58,6 +60,8 @@ void CuDNNConvolutionLayer<Dtype>::LayerSetUp(
   if (this->bias_term_) {
     cudnn::createTensor4dDesc<Dtype>(&bias_desc_);
   }
+
+  handles_setup_ = true;
 }
 
 template <typename Dtype>
@@ -84,6 +88,8 @@ void CuDNNConvolutionLayer<Dtype>::Reshape(
         this->num_output_ * this->height_out_ * this->width_out_,
         this->height_out_ * this->width_out_,
         this->width_out_, 1);
+    //printf("width_out_: %d, height_out_: %d\n", this->width_out_, this->height_out_); 
+    //printf("pad_h_: %d, pad_w_: %d\n", this->pad_h_, this->pad_w_); 
     cudnn::setConvolutionDesc<Dtype>(&conv_descs_[i], bottom_descs_[i],
         filter_desc_, this->pad_h_, this->pad_w_,
         this->stride_h_, this->stride_w_);
@@ -98,6 +104,9 @@ void CuDNNConvolutionLayer<Dtype>::Reshape(
 
 template <typename Dtype>
 CuDNNConvolutionLayer<Dtype>::~CuDNNConvolutionLayer() {
+  // Check that handles have been setup before destroying.
+  if (!handles_setup_) { return; }
+
   for (int i = 0; i < bottom_descs_.size(); i++) {
     cudnnDestroyTensorDescriptor(bottom_descs_[i]);
     cudnnDestroyTensorDescriptor(top_descs_[i]);

@@ -63,13 +63,13 @@ int main(int argc, char** argv) {
   FLAGS_alsologtostderr = 1;
   // Usage message.
   gflags::SetUsageMessage("\n"
-      "usage: predict <args>\n\n");
+      "usage: test_bn <args>\n\n");
   // Run tool or show usage.
   caffe::GlobalInit(&argc, &argv);
   if (argc == 2) {
 //    return GetBrewFunction(caffe::string(argv[1]))();
   } else {
-    gflags::ShowUsageWithFlagsRestrict(argv[0], "tools/predict");
+    gflags::ShowUsageWithFlagsRestrict(argv[0], "tools/test_bn");
   }
 
 /*  // label (open label txt for label names)
