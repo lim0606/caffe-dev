@@ -141,7 +141,7 @@ cv::Mat DecodeDatumToCVMat(const Datum& datum,
   std::vector<char> vec_data(data.c_str(), data.c_str() + data.size());
   if (height > 0 && width > 0) {
     cv::Mat cv_img_origin = cv::imdecode(cv::Mat(vec_data), cv_read_flag);
-    cv::resize(cv_img_origin, cv_img, cv::Size(width, height));
+    cv::resize(cv_img_origin, cv_img, cv::Size(width, height), 0, 0, cv::INTER_CUBIC);
   } else {
     cv_img = cv::imdecode(vec_data, cv_read_flag);
   }
