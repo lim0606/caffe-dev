@@ -298,7 +298,7 @@ int main(int argc, char** argv) {
     //LOG(INFO) << "iter: " << i; 
     const vector<Blob<float>*>& result =
         caffe_net.ForwardPrefilled();
-    //LOG(INFO) << "wtf1111"; 
+    //LOG(INFO) << "1111"; 
     // batch normalization for each BNLayer
     for (int k = 0; k < num_bn_layers; ++k) {
       //LOG(INFO) << "bn layer: " << k;
@@ -335,7 +335,7 @@ int main(int argc, char** argv) {
       buffer_blob.Reshape(N, C, H, W);
 
       const float* const_bottom_data = bottom[0]->gpu_data();
-      //LOG(INFO) << "wtf2222"; 
+      //LOG(INFO) << "2222"; 
       // put the squares of bottom into buffer_blob_
       caffe::caffe_gpu_powx(bottom[0]->count(), const_bottom_data, float(2),
           buffer_blob.mutable_gpu_data());
@@ -366,9 +366,9 @@ int main(int argc, char** argv) {
 
       /******** update E[X] for whole data ***********/
       caffe::caffe_gpu_axpy<float>(C, float(1.  / (iterations - 1.)), batch_variance.gpu_data(), batch_variance_vecs[k]->mutable_gpu_data());
-      //LOG(INFO) << "wtf3333";
+      //LOG(INFO) << "3333";
     }
-    //LOG(INFO) << "wtf4444"; 
+    //LOG(INFO) << "4444"; 
     for (int j = 0; j < batchsize; ++j){
       if (img_idx < numdata) {
 
@@ -378,11 +378,11 @@ int main(int argc, char** argv) {
       }
       ++img_idx;
     }
-    //LOG(INFO) << "wtf5555"; 
+    //LOG(INFO) << "5555"; 
     if (i % (int)(0.1*iterations) == 0) {
       //LOG(INFO) << float(i) / float(iterations) * 100 << "%"; 
     }
-    //LOG(INFO) << "wtf6666";
+    //LOG(INFO) << "6666";
   }
   //LOG(INFO) << "100%"; 
   //LOG(INFO) << "# of imgs (read): " << img_idx << ", # of imgs (processed): " << img_processed_idx;
